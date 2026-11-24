@@ -549,7 +549,31 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 
-load(); render();
+/* ========== Kiểm tra bản cập nhật ========== */
+const APP_VERSION = '2026.11.24-3';
+async function checkUpdate(){
+  if (location.protocol === 'file:') return;
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const v = (await r.json()).version;
+    if (!v || v === APP_VERSION || $('#updBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'updBar';
+    bar.style.cssText = 'position:fixed;left:12px;right:12px;top:calc(10px + var(--safe-t));z-index:30;max-width:496px;margin:0 auto;background:var(--ink);color:#fff;border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.2)';
+    bar.innerHTML = '<span style="flex:1;font-size:14px">Có bản cập nhật mới</span><button id="updBtn" style="height:38px;padding:0 16px;border:0;border-radius:10px;background:var(--accent);color:#fff;font-weight:600">Cập nhật</button>';
+    document.body.appendChild(bar);
+    $('#updBtn').addEventListener('click', async () => {
+      $('#updBtn').textContent = 'Đang tải…';
+      // Làm mới bản lưu đệm của trang chính rồi tải lại (dữ liệu chi tiêu không bị ảnh hưởng)
+      try { await fetch(location.pathname, { cache: 'reload' }); } catch(e){}
+      location.replace(location.pathname + '?v=' + encodeURIComponent(v));
+    });
+  } catch(e){ /* mất mạng: bỏ qua */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+
+load(); render(); checkUpdate();
 </script>
 </body>
 </html>

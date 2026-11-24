@@ -20,5 +20,12 @@ App theo dõi chi tiêu cá nhân, chạy trên trình duyệt (tối ưu cho iP
 ## Cài lên màn hình chính iPhone
 Mở link bằng Safari → nút Chia sẻ → **Thêm vào MH chính**.
 
+## Phát hành bản mới
+Mỗi lần sửa code, đổi số phiên bản ở **cả hai chỗ** cho giống nhau:
+- `APP_VERSION` trong `index.html`
+- `version` trong `version.json`
+
+App đang mở sẽ thấy hai số khác nhau và hiện thanh "Có bản cập nhật mới".
+
 ## Lưu ý
 Dữ liệu chỉ nằm trên trình duyệt của máy đang dùng. Nên vào **Cài đặt → Sao lưu dữ liệu** định kỳ (ví dụ cuối mỗi tháng).
