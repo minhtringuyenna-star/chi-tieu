@@ -219,6 +219,10 @@ let histFilter = { type:'all', cat:'all' };
 const monthLabel = m => { const [y,mo] = m.split('-'); return `Tháng ${Number(mo)}/${y}`; };
 function shiftMonth(delta){ const [y,m] = curMonth.split('-').map(Number); const d = new Date(y, m-1+delta, 1); curMonth = `${d.getFullYear()}-${pad(d.getMonth()+1)}`; render(); }
 const monthTx = () => db.transactions.filter(t => monthOf(t.date) === curMonth);
+/* Số dư cộng dồn: số dư ban đầu + (thu − chi) của mọi tháng trước tháng m */
+function carryInto(m){
+  return (db.openingBalance || 0) + db.transactions.reduce((s,t) => monthOf(t.date) < m ? s + (t.type==='income' ? t.amount : -t.amount) : s, 0);
+}
 
 function monthNavHtml(){
   return `<div class="monthNav">
@@ -234,6 +238,9 @@ function renderHome(){
   const inc = tx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const exp = tx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
   const left = inc - exp;
+  const carry = carryInto(curMonth);
+  const balance = carry + left;
+  const sgn = n => (n < 0 ? '−' : n > 0 ? '+' : '') + money(Math.abs(n));
   const byCat = {};
   tx.filter(t=>t.type==='expense').forEach(t => byCat[t.catId] = (byCat[t.catId]||0) + t.amount);
   const parts = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
@@ -256,9 +263,13 @@ function renderHome(){
   $('#pageHome').innerHTML = `
     <div class="hdr"><div><div class="sub">Sổ chi tiêu</div><h1>Tổng quan</h1></div>${monthNavHtml()}</div>
     <div class="hero">
-      <div class="heroTop"><div><div class="lbl">Còn dư tháng này</div><div class="big">${left<0?'−':''}${money(Math.abs(left))} ₫</div>
-        <div class="lbl">${pctUsed===null ? 'Chưa ghi thu nhập tháng này' : `Đã dùng ${pctUsed}% thu nhập`}</div></div>${donut}</div>
+      <div class="heroTop"><div><div class="lbl">Số dư hiện có</div><div class="big">${balance<0?'−':''}${money(Math.abs(balance))} ₫</div>
+        <div class="lbl">${pctUsed===null ? 'Chưa ghi thu nhập tháng này' : `Đã dùng ${pctUsed}% thu nhập tháng này`}</div></div>${donut}</div>
       <div class="pills"><div class="pill"><span>Thu nhập</span><span>${money(inc)}</span></div><div class="pill"><span>Đã chi</span><span>${money(exp)}</span></div></div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--brandSoft);border-top:1px solid #2B7A6F;padding-top:12px">
+        <div style="display:flex;justify-content:space-between"><span>Dư tháng trước chuyển sang</span><b style="color:#fff">${sgn(carry)}</b></div>
+        <div style="display:flex;justify-content:space-between"><span>Thu − chi tháng này</span><b style="color:#fff">${sgn(left)}</b></div>
+      </div>
     </div>
     ${reminderHtml()}
     <div class="secHead"><b>Chi theo danh mục</b></div>
@@ -357,6 +368,10 @@ function renderSettings(){
     <div class="card">${list('expense')}</div>
     <div class="secHead"><b>Danh mục thu</b><button class="link" data-act="newCat" data-val="income">+ Thêm</button></div>
     <div class="card">${list('income')}</div>
+    <div class="secHead"><b>Số dư</b></div>
+    <div class="card">
+      <button class="row" data-act="editOpening">${icBox({icon:'wallet',color:2})}<span class="grow"><span class="name" style="display:block">Số dư ban đầu</span><span class="small">Tiền đang có khi bắt đầu dùng app</span></span><span class="amt">${money(db.openingBalance||0)} ₫</span></button>
+    </div>
     <div class="secHead"><b>Dữ liệu</b></div>
     <div class="card">
       <button class="row" data-act="backup">${icBox({icon:'piggy',color:2})}<span class="grow"><span class="name" style="display:block">Sao lưu dữ liệu</span><span class="small">Tải file .json về máy</span></span></button>
@@ -465,7 +480,7 @@ $('#fileIn').addEventListener('change', async e => {
     const ok = data.transactions.every(t => t && typeof t.id==='string' && typeof t.amount==='number' && /^\d{4}-\d{2}-\d{2}$/.test(t.date));
     if (!ok) throw 0;
     if (!confirm(`Khôi phục ${data.transactions.length} giao dịch từ file? Dữ liệu hiện tại sẽ bị thay thế.`)) return;
-    db = { version:1, categories:data.categories, transactions:data.transactions }; save(); render(); toast('Đã khôi phục dữ liệu');
+    db = { version:1, openingBalance: Number(data.openingBalance)||0, categories:data.categories, transactions:data.transactions }; save(); render(); toast('Đã khôi phục dữ liệu');
   } catch(err){ toast('File không hợp lệ'); }
 });
 
@@ -518,6 +533,14 @@ document.addEventListener('click', e => {
     case 'saveBudget': case 'clearBudget': {
       const c = db.categories.find(x=>x.id===id); c.budget = act==='clearBudget' ? 0 : parseAmt($('#bAmt').value);
       save(); closeSheet(); render(); toast('Đã lưu hạn mức'); break; }
+    case 'editOpening': {
+      openSheet(`${sheetHead('Số dư ban đầu')}
+        <p class="note">Nhập số tiền bạn đang có trước khi bắt đầu ghi chép. App cộng số này với thu − chi của các tháng để ra số dư hiện có.</p>
+        <div class="fields"><div class="field"><label for="obAmt">Số tiền</label><input id="obAmt" inputmode="numeric" placeholder="0" value="${db.openingBalance?money(db.openingBalance):''}"></div></div>
+        <button class="btnMain" data-act="saveOpening">Lưu</button>`);
+      const b = $('#obAmt'); b.addEventListener('input', () => { const n = parseAmt(b.value); b.value = n ? money(n) : ''; }); setTimeout(()=>b.focus(),250);
+      break; }
+    case 'saveOpening': db.openingBalance = parseAmt($('#obAmt').value); save(); closeSheet(); render(); toast('Đã lưu số dư ban đầu'); break;
     case 'backup': backup(); break;
     case 'restore': $('#fileIn').click(); break;
     case 'csv': exportCsv(); break;
